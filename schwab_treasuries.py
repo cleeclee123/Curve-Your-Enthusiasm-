@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 import time
 import warnings
 from collections.abc import Mapping
@@ -179,12 +180,27 @@ if __name__ == "__main__":
     historical_auctions_df["auction_date"] = pd.to_datetime(
         historical_auctions_df["auction_date"]
     )
+
+    if len(sys.argv) > 1 and sys.argv[1]:
+        earliest_auction_year = int(sys.argv[1])
+    else:
+        earliest_auction_year = 2000
+
+    if len(sys.argv) > 2 and sys.argv[2]:
+        xlsx_file_name = str(sys.argv[2])
+    else:
+        xlsx_file_name = "market_observed_treasuries.xlsx"
+
+    verbose = False
+    if len(sys.argv) > 3 and sys.argv[3]:
+        verbose = True
+
     historical_auctions_df = historical_auctions_df[
-        (historical_auctions_df["auction_date"] > datetime(2000, 1, 1))
+        (historical_auctions_df["auction_date"] > datetime(earliest_auction_year, 1, 1))
     ]
 
-    print("Historical UST Auctions:")
-    print(historical_auctions_df)
+    print("Historical UST Auctions:") if verbose else None
+    print(historical_auctions_df) if verbose else None
 
     off_the_run_maturities = {0.5 + i for i in range(30)} | {x for x in range(1, 31)}
     on_the_runs_maturities = {0.5, 1, 2, 3, 5, 7, 10, 20, 30}
@@ -194,8 +210,8 @@ if __name__ == "__main__":
     off_the_run_usts_info_df = find_closest_dates(
         maturities_to_search, df=historical_auctions_df, date_key="maturity_date"
     )
-    print("Off the run USTs info to search for:")
-    print(off_the_run_usts_info_df)
+    print("Off the run USTs info to search for:") if verbose else None
+    print(off_the_run_usts_info_df) if verbose else None
 
     on_the_run_cusips = get_on_the_run_cusips(return_dict=True)
     off_the_run_cusips: Dict[str, str] = dict(
@@ -205,8 +221,8 @@ if __name__ == "__main__":
         )
     )
     cusips_to_search: Dict[str, str] = on_the_run_cusips | off_the_run_cusips
-    print("Cusips to search: ")
-    print(json.dumps(cusips_to_search, indent=4))
+    print("Cusips to search: ") if verbose else None
+    print(json.dumps(cusips_to_search, indent=4)) if verbose else None
 
     UST_Searcher = Schwab_UST_Seacher()
     UST_Searcher.login(
@@ -218,7 +234,7 @@ if __name__ == "__main__":
         cusips=cusips_to_search,
     )
     usts_df = pd.DataFrame(usts)
-    usts_df.to_excel("market_observed_treasuries.xlsx", index=False)
-    print(usts_df)
+    usts_df.to_excel(xlsx_file_name, index=False)
+    print(usts_df) if verbose else None
 
-    print(f"runtime: {time.time() - t1} seconds")
+    print(f"runtime: {time.time() - t1} seconds") if verbose else None
