@@ -12,9 +12,11 @@ import aiohttp
 import numpy as np
 import pandas as pd
 import requests
+import ujson as json
 
 JSONTypeVar = TypeVar("JSONTypeVar", dict, list, str, int, float, bool, type(None))
 JSON = Union[Dict[str, JSONTypeVar], List[JSONTypeVar], str, int, float, bool, None]
+
 
 def latest_download_file(path) -> str:
     os.chdir(path)
@@ -261,7 +263,7 @@ def get_on_the_run_cusips(
                 & (df["originalSecurityTerm"] != df["securityTerm"])
             ].index
         )
-        df["Date"] = pd.to_datetime(df["issueDate"])
+        df["issueDate"] = pd.to_datetime(df["issueDate"])
         df = df.sort_values("issueDate", ascending=False)
         result = df.groupby("originalSecurityTerm").first().reset_index()
         final_result = result[
@@ -292,6 +294,100 @@ def get_on_the_run_cusips(
         if return_dict:
             return dict(zip(final_result["target_tenor"], final_result["cusip"]))
         return final_result
+
+
+# n = 0 >> on-the-runs
+def get_last_n_off_the_run_cusips(n=0, filtered=False):
+    auctions_json = get_historical_treasury_auctions()
+    auctions_df = pd.DataFrame(auctions_json)
+    auctions_df = auctions_df[
+        (auctions_df["security_type"] != "TIPS")
+        & (auctions_df["security_type"] != "TIPS Note")
+        & (auctions_df["security_type"] != "TIPS Bond")
+        & (auctions_df["security_type"] != "FRN")
+        & (auctions_df["security_type"] != "FRN Note")
+        & (auctions_df["security_type"] != "FRN Bond")
+        & (auctions_df["security_type"] != "CMB")
+    ]
+    auctions_df = auctions_df.drop(
+        auctions_df[
+            (auctions_df["security_type"] == "Bill")
+            & (
+                auctions_df["original_security_term"]
+                != auctions_df["security_term_week_year"]
+            )
+        ].index
+    )
+    auctions_df["auction_date"] = pd.to_datetime(auctions_df["auction_date"])
+    current_date = pd.Timestamp.now()
+    auctions_df = auctions_df[auctions_df["auction_date"] <= current_date]
+
+    auctions_df["issue_date"] = pd.to_datetime(auctions_df["issue_date"])
+    auctions_df = auctions_df.sort_values("issue_date", ascending=False)
+
+    mapping = {
+        "17-Week": 0.25,
+        "26-Week": 0.5,
+        "52-Week": 1,
+        "2-Year": 2,
+        "3-Year": 3,
+        "5-Year": 5,
+        "7-Year": 7,
+        "10-Year": 10,
+        "20-Year": 20,
+        "30-Year": 30,
+    }
+
+    on_the_run = auctions_df.groupby("original_security_term").first().reset_index()
+    on_the_run_result = on_the_run[
+        [
+            "original_security_term",
+            "security_type",
+            "cusip",
+            "auction_date",
+            "issue_date",
+        ]
+    ]
+
+    off_the_run = auctions_df[~auctions_df.index.isin(on_the_run.index)]
+    off_the_run_result = (
+        off_the_run.groupby("original_security_term")
+        .nth(list(range(1, n + 1)))
+        .reset_index()
+    )
+
+    combined_result = pd.concat(
+        [on_the_run_result, off_the_run_result], ignore_index=True
+    )
+    combined_result = combined_result.sort_values(
+        by=["original_security_term", "issue_date"], ascending=[True, False]
+    )
+
+    combined_result["target_tenor"] = combined_result["original_security_term"].replace(
+        mapping
+    )
+    mask = combined_result["original_security_term"].isin(mapping.keys())
+    mapped_and_filtered_df = combined_result[mask]
+    grouped = mapped_and_filtered_df.groupby("original_security_term")
+    max_size = grouped.size().max()
+    wrapper = []
+    for i in range(max_size):
+        sublist = []
+        for _, group in grouped:
+            if i < len(group):
+                sublist.append(group.iloc[i].to_dict())
+        sublist = sorted(sublist, key=lambda d: d["target_tenor"])
+        if filtered:
+            wrapper.append(
+                {
+                    auctioned_dict["target_tenor"]: auctioned_dict["cusip"]
+                    for auctioned_dict in sublist
+                }
+            )
+        else:
+            wrapper.append(sublist)
+
+    return wrapper
 
 
 def find_closest_dates(
@@ -332,19 +428,26 @@ def find_closest_dates(
 if __name__ == "__main__":
     start = time.time()
 
-    dir_path = r"C:\Users\chris\trading_textbooks_workbooks\Markets\Fixed Income\Beep Beep Trade Bonds Boop\data"
+    # dir_path = r"C:\Users\chris\trading_textbooks_workbooks\Markets\Fixed Income\Beep Beep Trade Bonds Boop\data"
 
-    years = [str(x) for x in range(2024, 1989, -1)]
-    years_str = "_".join(years) if len(years) > 1 else years[0]
+    # years = [str(x) for x in range(2024, 1989, -1)]
+    # years_str = "_".join(years) if len(years) > 1 else years[0]
 
-    df_treasuries = multi_download_year_treasury_par_yield_curve_rate(
-        years, dir_path, run_all=True
-    )
-    print(df_treasuries)
+    # df_treasuries = multi_download_year_treasury_par_yield_curve_rate(
+    #     years, dir_path, run_all=True
+    # )
+    # print(df_treasuries)
 
     # df_real_treasuries = multi_download_year_treasury_par_yield_curve_rate(
     #     years, dir_path, real_par_yields=True
     # )
+
+    a = get_last_n_off_the_run_cusips(n=0, filtered=True)
+    print(json.dumps(a, indent=4, default=str))
+    # print(a)
+
+    aa = get_on_the_run_cusips(return_dict=True)
+    print(json.dumps(aa, indent=4, sort_keys=True, default=str))
 
     end = time.time()
     print(end - start, " sec")

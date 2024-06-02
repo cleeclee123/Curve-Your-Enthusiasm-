@@ -6,6 +6,7 @@ import warnings
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Dict, List, Optional, TypeVar, Union
+from bs4 import BeautifulSoup
 
 import httpx
 import pandas as pd
@@ -101,6 +102,14 @@ class Schwab_UST_Seacher(SessionManager):
             try:
                 response = await client.post(url, data=payload, follow_redirects=True)
                 response.raise_for_status()
+                soup = BeautifulSoup(response.content, "html.parser")
+                element = soup.find(id="ctl00_wpm_wpPgLstUpd_ucPgLstUpd_lblPgUpdTxt")
+                if element:
+                    last_updated_string = element.get_text()
+                    date_format = "%I:%M %p ET, %m/%d/%Y"
+                    date_part = last_updated_string.split(": ", 1)[1].strip()
+                    parsed_date = datetime.strptime(date_part, date_format)
+
                 tables = pd.read_html(response.content)
                 df = tables[0]
                 max_estimated_total_row = df.loc[df["Estimated Total"].idxmax()]
@@ -115,8 +124,9 @@ class Schwab_UST_Seacher(SessionManager):
                 time_to_maturity_days = (maturity_date - today).days
                 time_to_maturity_years = time_to_maturity_days / 365
                 best["time_to_maturity"] = time_to_maturity_years
-
+                best["last_updated"] = parsed_date if element else None
                 return best
+
             except httpx.HTTPStatusError as e:
                 print(f"HTTP error status: {e.response.status_code}")
                 return {}
