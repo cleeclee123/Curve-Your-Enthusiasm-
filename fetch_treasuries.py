@@ -219,7 +219,7 @@ def multi_download_year_treasury_par_yield_curve_rate(
     return organized_by_ust_type_df_dict_concated
 
 
-def get_historical_treasury_auctions():
+def get_historical_treasury_auctions() -> List[JSON]:
     def get_treasury_query_sizing() -> List[str]:
         MAX_TREASURY_GOV_API_CONTENT_SIZE = 10000
         base_url = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/auctions_query?page[number]=1&page[size]=1"
@@ -298,7 +298,7 @@ def get_on_the_run_cusips(
 
 
 # n = 0 >> on-the-runs
-def get_last_n_off_the_run_cusips(n=0, filtered=False):
+def get_last_n_off_the_run_cusips(n=0, filtered=False) -> List[Dict[str, str]]:
     auctions_json = get_historical_treasury_auctions()
     auctions_df = pd.DataFrame(auctions_json)
     auctions_df = auctions_df[
@@ -426,7 +426,9 @@ def find_closest_dates(
         return closest_dates_df
 
 
-def fetch_historical_prices(dates: List[datetime], cusips: Optional[List[str]] = None):
+def fetch_historical_prices(
+    dates: List[datetime], cusips: Optional[List[str]] = None
+) -> Dict[str, str]:
     url = "https://savingsbonds.gov/GA-FI/FedInvest/selectSecurityPriceDate"
     headers = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -525,21 +527,27 @@ if __name__ == "__main__":
     # aa = get_on_the_run_cusips(return_list=True)
     # print(json.dumps(aa, indent=4, sort_keys=True, default=str))
 
-    cusips = [
-        "912797LJ4",
-        "912797LD7",
-        "912797KS5",
-        "91282CKK6",
-        "91282CKJ9",
-        "91282CKP5",
-        "91282CKN0",
-        "91282CJZ5",
-        "912810TZ1",
-        "912810TX6",
-    ]
-    dates = [datetime(2024, 5, 31), datetime(2024, 5, 30)]
-    dfs = fetch_historical_prices(dates=dates, cusips=cusips)
-    print(dfs)
+    # cusips = [
+    #     "912797LJ4",
+    #     "912797LD7",
+    #     "912797KS5",
+    #     "91282CKK6",
+    #     "91282CKJ9",
+    #     "91282CKP5",
+    #     "91282CKN0",
+    #     "91282CJZ5",
+    #     "912810TZ1",
+    #     "912810TX6",
+    # ]
+    # dates = [datetime(2024, 5, 31), datetime(2024, 5, 30)]
+    # dfs = fetch_historical_prices(dates=dates, cusips=cusips)
+    # print(dfs)
+
+    # df = get_cusip_from_bond_dates(issue_date=datetime(2021, 6, 30), maturity_date=datetime(2026, 6, 30))
+    # print(df)
+
+    # df = get_cme_delivery_basket()
+    # print(df)
 
     end = time.time()
     print(end - start, " sec")
