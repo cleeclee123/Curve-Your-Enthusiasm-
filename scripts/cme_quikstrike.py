@@ -6,7 +6,7 @@ import httpx
 import pandas as pd
 import requests
 
-from fetch_treasuries import get_historical_treasury_auctions
+from scripts.fetch_treasuries import get_historical_treasury_auctions
 
 
 def get_cme_quikstrike_headers(tabid: Optional[str] = None):
@@ -61,7 +61,9 @@ def get_cme_ctd_data():
         return df
 
 
-def get_cme_delivery_basket(bond_info_to_dict=False):
+def get_cme_delivery_basket(
+    bond_info_to_dict=False, return_html=False
+) -> Dict[str, bytes | Dict[str, pd.DataFrame | Dict[str, str]]]:
     headers = get_cme_quikstrike_headers()
     url = "https://cmegroup-tools.quikstrike.net/User/QuikStrikeView.aspx?viewitemid=IntegratedStrikeAsYield&tabid=CurveWatch&insid=126856832&qsid=4239e622-9037-467c-bd40-1733ccafafd3"
     event_targets = {
@@ -91,8 +93,11 @@ def get_cme_delivery_basket(bond_info_to_dict=False):
         try:
             response = await client.post(url, data=payload, follow_redirects=True)
             response.raise_for_status()
-            tables = pd.read_html(response.content)
 
+            if return_html:
+                return tenor, response.content
+
+            tables = pd.read_html(response.content)
             df_ctd_info = tables[1]
             df_ctd_info.columns = df_ctd_info.iloc[0]
             df_ctd_info = df_ctd_info.drop(df_ctd_info.index[0])
