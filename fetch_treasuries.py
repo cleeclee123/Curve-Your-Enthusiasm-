@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, TypeVar, Union
 
 import aiohttp
+import httpx
 import numpy as np
 import pandas as pd
 import requests
@@ -425,6 +426,82 @@ def find_closest_dates(
         return closest_dates_df
 
 
+def fetch_historical_prices(dates: List[datetime], cusips: Optional[List[str]] = None):
+    url = "https://savingsbonds.gov/GA-FI/FedInvest/selectSecurityPriceDate"
+    headers = {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "max-age=0",
+        "Connection": "keep-alive",
+        "Content-Length": "73",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Dnt": "1",
+        "Host": "savingsbonds.gov",
+        "Origin": "https://savingsbonds.gov",
+        "Referer": "https://savingsbonds.gov/GA-FI/FedInvest/selectSecurityPriceDate",
+        "Sec-Ch-Ua": '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    }
+
+    def build_date_payload(date: datetime):
+        return {
+            "priceDate.month": date.month,
+            "priceDate.day": date.day,
+            "priceDate.year": date.year,
+            "submit": "Show Prices",
+        }
+
+    async def fetch_prices_from_treasury_date_search(
+        client: httpx.AsyncClient, date: datetime
+    ) -> Dict:
+        payload = build_date_payload(date)
+        try:
+            response = await client.post(url, data=payload, follow_redirects=True)
+            response.raise_for_status()
+            tables = pd.read_html(response.content)
+            df = tables[0]
+            missing_cusips = [
+                cusip for cusip in cusips if cusip not in df["CUSIP"].values
+            ]
+            if missing_cusips:
+                print(
+                    f"The following CUSIPs are not found in the DataFrame: {missing_cusips}"
+                )
+            df = df[df["CUSIP"].isin(cusips)] if cusips else df
+            return date, df
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP error status: {e.response.status_code}")
+            return date, pd.DataFrame()
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return date, pd.DataFrame()
+
+    timeout = httpx.Timeout(10)
+
+    async def run_fetch_all(dates: List[datetime]) -> List[Dict]:
+        async with httpx.AsyncClient(
+            headers=headers,
+            timeout=timeout,
+        ) as client:
+            tasks = [
+                fetch_prices_from_treasury_date_search(client=client, date=date)
+                for date in dates
+            ]
+            results = await asyncio.gather(*tasks)
+            return results
+
+    bonds = asyncio.run(run_fetch_all(dates))
+    return dict(bonds)
+
+
 if __name__ == "__main__":
     start = time.time()
 
@@ -442,12 +519,27 @@ if __name__ == "__main__":
     #     years, dir_path, real_par_yields=True
     # )
 
-    a = get_last_n_off_the_run_cusips(n=0, filtered=True)
-    print(json.dumps(a, indent=4, default=str))
-    # print(a)
+    # a = get_last_n_off_the_run_cusips(n=1, filtered=True)
+    # print(json.dumps(a[1], indent=4, default=str))
 
-    aa = get_on_the_run_cusips(return_dict=True)
-    print(json.dumps(aa, indent=4, sort_keys=True, default=str))
+    # aa = get_on_the_run_cusips(return_list=True)
+    # print(json.dumps(aa, indent=4, sort_keys=True, default=str))
+
+    cusips = [
+        "912797LJ4",
+        "912797LD7",
+        "912797KS5",
+        "91282CKK6",
+        "91282CKJ9",
+        "91282CKP5",
+        "91282CKN0",
+        "91282CJZ5",
+        "912810TZ1",
+        "912810TX6",
+    ]
+    dates = [datetime(2024, 5, 31), datetime(2024, 5, 30)]
+    dfs = fetch_historical_prices(dates=dates, cusips=cusips)
+    print(dfs)
 
     end = time.time()
     print(end - start, " sec")
