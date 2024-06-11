@@ -219,7 +219,9 @@ def multi_download_year_treasury_par_yield_curve_rate(
     return organized_by_ust_type_df_dict_concated
 
 
-def get_historical_treasury_auctions() -> List[JSON]:
+def get_historical_treasury_auctions(
+    xlsx_path: Optional[str] = None, return_df=False
+) -> List[JSON] | pd.DataFrame:
     def get_treasury_query_sizing() -> List[str]:
         MAX_TREASURY_GOV_API_CONTENT_SIZE = 10000
         base_url = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/auctions_query?page[number]=1&page[size]=1"
@@ -246,7 +248,13 @@ def get_historical_treasury_auctions() -> List[JSON]:
             return await asyncio.gather(*tasks)
 
     results: List[List[JSON]] = asyncio.run(run_fetch(links))
-    return [item for sublist in results for item in sublist]
+    flat = [item for sublist in results for item in sublist]
+    if xlsx_path:
+        df = pd.DataFrame(flat)
+        df.to_excel(xlsx_path, index=False)
+        if return_df:
+            return df
+    return flat
 
 
 def get_on_the_run_cusips(
